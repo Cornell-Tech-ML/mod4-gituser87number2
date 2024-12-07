@@ -1,11 +1,76 @@
 import random
 
-import embeddings
+#import embeddings
 
 import minitorch
 from datasets import load_dataset
 
 BACKEND = minitorch.TensorBackend(minitorch.FastOps)
+
+
+#Below GLOVE Embedding code thanks to Cornelius Schramm from ED as had unknown errors with the original GLOVE code
+
+
+def load_glove_embeddings(path="project/data/glove.6B.50d.txt"):
+    """Load GloVe embeddings from local file.
+
+    Args:
+    ----
+        path: Path to the GloVe embeddings file
+
+    Returns:
+    -------
+        dict: Word to embedding mapping
+    """
+    word2emb = {}
+    with open(path, 'r', encoding='utf-8') as f:
+        for line in f:
+            values = line.split()
+            word = values[0]
+            vector = [float(x) for x in values[1:]]
+            word2emb[word] = vector
+    return word2emb
+
+# Replace the embeddings initialization line with:
+word2emb = load_glove_embeddings()
+
+class GloveEmbedding:
+    """Simple wrapper class to mimic the original GloveEmbedding interface."""
+
+    def __init__(self, word2emb):
+        self.word2emb = word2emb
+        # Get embedding dimension from first entry
+        self.d_emb = len(next(iter(word2emb.values())))
+
+    def emb(self, word, default=None):
+        """Get embedding for a word.
+
+        Args:
+        ----
+            word: Word to get embedding for
+            default: Default value if word not found
+
+        Returns:
+        -------
+            list: Embedding vector
+        """
+        return self.word2emb.get(word, default)
+
+    def __contains__(self, word):
+        """Support for 'in' operator.
+
+        Args:
+        ----
+            word: Word to check
+
+        Returns:
+        -------
+            bool: True if word is in embeddings
+        """
+        return word in self.word2emb
+
+# Then use it like:
+embeddings = GloveEmbedding(word2emb)
 
 
 def RParam(*shape):
@@ -34,8 +99,7 @@ class Conv1d(minitorch.Module):
         self.bias = RParam(1, out_channels, 1)
 
     def forward(self, input):
-        # TODO: Implement for Task 4.5.
-        raise NotImplementedError("Need to implement for Task 4.5")
+        return minitorch.conv1d(input, self.weights.value) + self.bias.value
 
 
 class CNNSentimentKim(minitorch.Module):
@@ -61,15 +125,40 @@ class CNNSentimentKim(minitorch.Module):
     ):
         super().__init__()
         self.feature_map_size = feature_map_size
+
+        self.conv1 = Conv1d(embedding_size, feature_map_size, filter_sizes[0])
+        self.conv2 = Conv1d(embedding_size, feature_map_size, filter_sizes[1]) #convolve over all three filter sizes
+        self.conv3 = Conv1d(embedding_size, feature_map_size, filter_sizes[2]) #step 1
+        self.fc = Linear(feature_map_size, 1)
+        self.dropout = dropout
+
         # TODO: Implement for Task 4.5.
-        raise NotImplementedError("Need to implement for Task 4.5")
 
     def forward(self, embeddings):
         """
         embeddings tensor: [batch x sentence length x embedding dim]
         """
+        # Permute to [batch x embedding dim x sentence length]
+        embeddings = embeddings.permute(0, 2, 1)
+
+        x1 = minitorch.nn.max(self.conv1(embeddings).relu(), dim=2)
+        x2 = minitorch.nn.max(self.conv2(embeddings).relu(), dim=2) #step 2
+        x3 = minitorch.nn.max(self.conv3(embeddings).relu(), dim=2)
+
+        # Concatenate the max-pooled features
+        x = x1 + x2 + x3
+
+        # Apply Linear and ReLU
+        batch = x.shape[0] #C, number of classes
+        x = self.fc(x.view(batch, self.feature_map_size)).relu() #step 3a
+
+        # Apply Dropout
+        x = minitorch.dropout(x, self.dropout, not self.training) #step 3b
+
+        # Apply Sigmoid and reshape to batch size for classification
+        return x.sigmoid().view(batch) #step 4
+
         # TODO: Implement for Task 4.5.
-        raise NotImplementedError("Need to implement for Task 4.5")
 
 
 # Evaluation helper methods
@@ -253,14 +342,14 @@ def encode_sentiment_data(dataset, pretrained_embeddings, N_train, N_val=0):
 
 
 if __name__ == "__main__":
-    train_size = 450
+    train_size = 2500
     validation_size = 100
-    learning_rate = 0.01
+    learning_rate = 0.014
     max_epochs = 250
 
     (X_train, y_train), (X_val, y_val) = encode_sentiment_data(
         load_dataset("glue", "sst2"),
-        embeddings.GloveEmbedding("wikipedia_gigaword", d_emb=50, show_progress=True),
+        embeddings,
         train_size,
         validation_size,
     )

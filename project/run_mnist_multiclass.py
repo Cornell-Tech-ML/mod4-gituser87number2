@@ -41,8 +41,8 @@ class Conv2d(minitorch.Module):
         self.bias = RParam(out_channels, 1, 1)
 
     def forward(self, input):
+        return minitorch.conv2d(input, self.weights.value) + self.bias.value
         # TODO: Implement for Task 4.5.
-        raise NotImplementedError("Need to implement for Task 4.5")
 
 
 class Network(minitorch.Module):
@@ -67,12 +67,34 @@ class Network(minitorch.Module):
         self.mid = None
         self.out = None
 
+        self.conv1 = Conv2d(1, 4, 3, 3) #step 1 prep
+        self.conv2 = Conv2d(4, 8, 3, 3) #step 2 prep
+        self.fc1 = Linear(392, 64) #step 4 prep
+        self.fc2 = Linear(64, C) #step 5 prep
         # TODO: Implement for Task 4.5.
-        raise NotImplementedError("Need to implement for Task 4.5")
 
     def forward(self, x):
+        #Step 1, 2
+        self.mid = self.conv1(x).relu()
+        self.out = self.conv2(self.mid).relu()
+
+        # Step 3
+        pooled = minitorch.avgpool2d(self.out, (4, 4))
+
+        # Step 4
+        flat = pooled.view(BATCH, 392)
+
+        # Step 5
+        fc1 = self.fc1(flat).relu()
+        fc1 = minitorch.dropout(fc1, 0.25, not self.training)
+
+        # Step 6
+        fc2 = self.fc2(fc1)
+
+        # Step 7
+        return minitorch.logsoftmax(fc2, 1)
+
         # TODO: Implement for Task 4.5.
-        raise NotImplementedError("Need to implement for Task 4.5")
 
 
 def make_mnist(start, stop):
@@ -171,4 +193,4 @@ class ImageTrain:
 
 if __name__ == "__main__":
     data_train, data_val = (make_mnist(0, 5000), make_mnist(10000, 10500))
-    ImageTrain().train(data_train, data_val, learning_rate=0.01)
+    ImageTrain().train(data_train, data_val, learning_rate=0.01, max_epochs=10)
