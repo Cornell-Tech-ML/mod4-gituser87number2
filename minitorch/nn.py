@@ -144,13 +144,11 @@ def logsoftmax(input: Tensor, dim: int) -> Tensor:
     Returns:
     -------
         Tensor of size batch x channel x height x width with logsoftmax applied to dim
-        See https://en.wikipedia.org/wiki/LogSumExp#log-sum-exp_trick_for_log-domain_calculations
 
     """
-    # LogSumExp trick: subtract max then add back in
     x_max = max(input, dim)
     input_exp = (input - x_max).exp()
-    sum_exp = input_exp.sum(dim=dim)
+    sum_exp = input_exp.sum(dim)
     log_sum_exp = sum_exp.log() + x_max
     return input - log_sum_exp
 
@@ -186,13 +184,14 @@ def dropout(input: Tensor, p: float, ignore: bool = False) -> Tensor:
 
     Returns:
     -------
-        Tensor of same size with dropout applied
+        Tensor of same size as input with dropout applied
 
     """
     if ignore == 1:
         return input
 
-    # Mask of 1/0 values based on probability p
+    # Mask of 1 and 0 values based on probability p
+    # If value is greater than p value is kept, else 0
     random_mask = rand(input.shape) > p
 
     return input * random_mask
